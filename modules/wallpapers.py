@@ -1,7 +1,9 @@
 import os
 import hashlib
-from gi.repository import GdkPixbuf, Gtk, GLib, Gio  # Added Gio for file monitoring
+import shutil        # <-- added import for shutil
+from gi.repository import GdkPixbuf, Gtk, GLib, Gio, Gdk  # Se agregó Gdk para capturar teclas
 from fabric.widgets.box import Box
+from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.entry import Entry
 from fabric.widgets.button import Button
 from fabric.widgets.scrolledwindow import ScrolledWindow
@@ -14,22 +16,30 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 
 class WallpaperSelector(Box):
-    CACHE_DIR = os.path.expanduser("~/.cache/ax-shell/wallpapers")
+    CACHE_DIR = os.path.expanduser("~/.cache/ax-shell/thumbs")  # Changed from wallpapers to thumbs
 
     def __init__(self, **kwargs):
-        super().__init__(name="wallpapers", spacing=4, orientation="v", **kwargs)
-        self.notch = kwargs["notch"]
+        # Delete the old cache directory if it exists
+        old_cache_dir = os.path.expanduser("~/.cache/ax-shell/wallpapers")
+        if os.path.exists(old_cache_dir):
+            shutil.rmtree(old_cache_dir)
+        
+        super().__init__(name="wallpapers", spacing=4, orientation="v", h_expand=False, v_expand=False, **kwargs)
         os.makedirs(self.CACHE_DIR, exist_ok=True)
         self.files = sorted([f for f in os.listdir(data.WALLPAPERS_DIR) if self._is_image(f)])
         self.thumbnails = []
         self.thumbnail_queue = []
         self.executor = ThreadPoolExecutor(max_workers=4)  # Shared executor
-        
-        # Initialize UI components
-        self.viewport = Gtk.IconView()
+
+        # Variable para controlar la selección (similar a AppLauncher)
+        self.selected_index = -1
+
+        # Inicialización de componentes UI
+        self.viewport = Gtk.IconView(name="wallpaper-icons")
         self.viewport.set_model(Gtk.ListStore(GdkPixbuf.Pixbuf, str))
         self.viewport.set_pixbuf_column(0)
-        self.viewport.set_text_column(1)
+        # Quitamos la columna de texto para que solo se muestre la imagen
+        self.viewport.set_text_column(-1)
         self.viewport.set_item_width(0)
         self.viewport.connect("item-activated", self.on_wallpaper_selected)
 
@@ -42,12 +52,15 @@ class WallpaperSelector(Box):
         )
 
         self.search_entry = Entry(
-            name="search-entry",
+            name="search-entry-walls",
             placeholder="Search Wallpapers...",
             h_expand=True,
             notify_text=lambda entry, *_: self.arrange_viewport(entry.get_text()),
+            on_key_press_event=self.on_search_entry_key_press,
         )
         self.search_entry.props.xalign = 0.5
+        # Instead of always grabbing focus on focus-out, call our handler:
+        self.search_entry.connect("focus-out-event", self.on_search_entry_focus_out)
 
         self.schemes = {
             "scheme-tonal-spot": "Tonal Spot",
@@ -68,37 +81,25 @@ class WallpaperSelector(Box):
         self.scheme_dropdown.set_active_id("scheme-tonal-spot")
         self.scheme_dropdown.connect("changed", self.on_scheme_changed)
 
-        self.dropdown_box = Box(
-            name="dropdown-box",
-            spacing=10,
-            orientation="h",
-            children=[
-                self.scheme_dropdown,
-                Label(name="dropdown-label", markup=icons.chevron_down),
-            ],
-        )
-
-        self.header_box = Box(
+        self.header_box = CenterBox(
             name="header-box",
             spacing=10,
             orientation="h",
-            children=[
+            center_children=[
                 self.search_entry,
-                self.dropdown_box,
-                Button(
-                    name="close-button",
-                    child=Label(name="close-label", markup=icons.cancel),
-                    tooltip_text="Close Selector",
-                    on_clicked=lambda *_: self.close_selector(),
-                ),
+            ],
+            end_children=[
+                self.scheme_dropdown,
             ],
         )
 
         self.add(self.header_box)
         self.add(self.scrolled_window)
         self._start_thumbnail_thread()
-        self.setup_file_monitor()  # Initialize file monitoring
+        self.setup_file_monitor()  # Inicializamos la monitorización de archivos
         self.show_all()
+        # Garantizamos que el input tenga foco al iniciar
+        self.search_entry.grab_focus()
 
     def setup_file_monitor(self):
         gfile = Gio.File.new_for_path(data.WALLPAPERS_DIR)
@@ -133,11 +134,9 @@ class WallpaperSelector(Box):
                         print(f"Error deleting cache for changed file {file_name}: {e}")
                 self.executor.submit(self._process_file, file_name)
 
-    def close_selector(self):
-        self.notch.close_notch()
-
     def arrange_viewport(self, query: str = ""):
-        self.viewport.get_model().clear()
+        model = self.viewport.get_model()
+        model.clear()
         filtered_thumbnails = [
             (thumb, name)
             for thumb, name in self.thumbnails
@@ -145,7 +144,14 @@ class WallpaperSelector(Box):
         ]
         filtered_thumbnails.sort(key=lambda x: x[1].lower())
         for pixbuf, file_name in filtered_thumbnails:
-            self.viewport.get_model().append([pixbuf, file_name])
+            model.append([pixbuf, file_name])
+        # Si el input está vacío, no se marca ningún ícono;
+        # de lo contrario, se marca el primero
+        if query.strip() == "":
+            self.viewport.unselect_all()
+            self.selected_index = -1
+        elif len(model) > 0:
+            self.update_selection(0)
 
     def on_wallpaper_selected(self, iconview, path):
         model = iconview.get_model()
@@ -157,6 +163,70 @@ class WallpaperSelector(Box):
     def on_scheme_changed(self, combo):
         selected_scheme = combo.get_active_id()
         print(f"Color scheme selected: {selected_scheme}")
+
+    def on_search_entry_key_press(self, widget, event):
+        if event.state & Gdk.ModifierType.SHIFT_MASK:
+            if event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down):
+                schemes_list = list(self.schemes.keys())
+                current_id = self.scheme_dropdown.get_active_id()
+                current_index = schemes_list.index(current_id) if current_id in schemes_list else 0
+                if event.keyval == Gdk.KEY_Up:
+                    new_index = (current_index - 1) % len(schemes_list)
+                else:
+                    new_index = (current_index + 1) % len(schemes_list)
+                self.scheme_dropdown.set_active(new_index)
+                return True
+            elif event.keyval == Gdk.KEY_Right:
+                self.scheme_dropdown.popup()
+                return True
+
+        if event.keyval in (Gdk.KEY_Up, Gdk.KEY_Down, Gdk.KEY_Left, Gdk.KEY_Right):
+            self.move_selection_2d(event.keyval)
+            return True
+        elif event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            if self.selected_index != -1:
+                path = Gtk.TreePath.new_from_indices([self.selected_index])
+                self.on_wallpaper_selected(self.viewport, path)
+            return True
+        return False
+
+    def move_selection_2d(self, keyval):
+        model = self.viewport.get_model()
+        total_items = len(model)
+        if total_items == 0:
+            return
+
+        if self.selected_index == -1:
+            # Si no hay selección previa, iniciamos en 0 o en el último según la flecha
+            new_index = 0 if keyval in (Gdk.KEY_Down, Gdk.KEY_Right) else total_items - 1
+        else:
+            current_index = self.selected_index
+            # Se calcula el número de columnas basado en el ancho asignado al IconView y el ancho aproximado de cada ítem.
+            allocation = self.viewport.get_allocation()
+            item_width = 108  # Valor aproximado (tamaño del thumbnail más márgenes)
+            columns = max(1, allocation.width // item_width)
+            if keyval == Gdk.KEY_Right:
+                new_index = current_index + 1
+            elif keyval == Gdk.KEY_Left:
+                new_index = current_index - 1
+            elif keyval == Gdk.KEY_Down:
+                new_index = current_index + columns
+            elif keyval == Gdk.KEY_Up:
+                new_index = current_index - columns
+            # Aseguramos que el índice esté dentro de los límites
+            if new_index < 0:
+                new_index = 0
+            if new_index >= total_items:
+                new_index = total_items - 1
+
+        self.update_selection(new_index)
+
+    def update_selection(self, new_index: int):
+        self.viewport.unselect_all()
+        path = Gtk.TreePath.new_from_indices([new_index])
+        self.viewport.select_path(path)
+        self.viewport.scroll_to_path(path, False, 0.5, 0.5)  # Asegura que el ícono marcado esté visible
+        self.selected_index = new_index
 
     def _start_thumbnail_thread(self):
         thread = GLib.Thread.new("thumbnail-loader", self._preload_thumbnails, None)
@@ -172,8 +242,15 @@ class WallpaperSelector(Box):
         if not os.path.exists(cache_path):
             try:
                 with Image.open(full_path) as img:
-                    img.thumbnail((96, 96), Image.Resampling.BILINEAR)
-                    img.save(cache_path, "PNG")
+                    width, height = img.size
+                    side = min(width, height)
+                    left = (width - side) // 2
+                    top = (height - side) // 2
+                    right = left + side
+                    bottom = top + side
+                    img_cropped = img.crop((left, top, right, bottom))
+                    img_cropped.thumbnail((96, 96), Image.Resampling.LANCZOS)
+                    img_cropped.save(cache_path, "PNG")
             except Exception as e:
                 print(f"Error processing {file_name}: {e}")
                 return
@@ -201,3 +278,9 @@ class WallpaperSelector(Box):
     @staticmethod
     def _is_image(file_name: str) -> bool:
         return file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp'))
+
+    def on_search_entry_focus_out(self, widget, event):
+        # Only re-grab focus if the WallpaperSelector widget is mapped (visible)
+        if self.get_mapped():
+            widget.grab_focus()
+        return False

@@ -21,6 +21,7 @@
   transition: all 0.5s cubic-bezier(0.5, 0.25, 0, 1.25);
 }
 
+
 #notch-content.launcher {
   padding: 16px;
   min-height: 220px;
@@ -77,6 +78,16 @@
   border-radius: 0 0 36px 36px;
 }
 
+#notch-content.osd:hover {
+  background-color: var(--surface);
+}
+
+#notch-content.media {
+  padding:0px;
+  min-width: 350px;
+  border-radius: 0 0 36px 36px;
+}
+
 #app-launcher,
 #dashboard,
 #wallpapers,
@@ -98,7 +109,7 @@
 #power-menu.open,
 #bluetooth.open {
   opacity: 1;
-  margin: 0px;
+  margin: 10px;
 }
 
 #osd-menu {
@@ -112,19 +123,41 @@
   margin: 0px;
 }
 
+#media-view {
+  opacity: 1;
+  margin: -800px;
+  transition: all 0.25s cubic-bezier(0.5, 0.25, 0, 1);
+  padding: 4px;
+}
+
+
+#media-view.open {
+  opacity: 1;
+  margin: 0px;
+}
+
+#media-view button {
+    color: #333;
+}
+
+#media-view label {
+  margin-right: 5px; /* Increased spacing between text and progress bar */
+  margin-left: 5px; /* Increased spacing between text and progress bar */
+
+}
+
+#media-progress-box{
+  margin-bottom: 8px;
+}
+
+#media-view.media-hover {
+  min-height: 100px;
+}
+
 #notch-compact {
   font-weight: bold;
   border-radius: 0 0 20px 20px;
   transition: all 0.1s ease;
-}
-
-#notch-compact:hover {
-  background: linear-gradient(
-    to bottom,
-    var(--shadow) 50%,
-    var(--surface) 95%,
-    var(--primary) 95%
-  );
 }
 
 #notch-corner-left {
@@ -134,3 +167,41 @@
 #notch-corner-right {
   margin-right: -16px;
 }
+
+/* Updated keyframes for slide effect with fade */
+@keyframes slide-up {
+  from { margin-top: 20px; opacity: 0; }
+  to   { margin-top: 0; opacity: 1; }
+}
+@keyframes slide-down {
+  from { margin-top: -20px; opacity: 0; }
+  to   { margin-top: 0; opacity: 1; }
+}
+
+
+.slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.2, 0.8, 0.8, 1);
+}
+.slide-down {
+  animation: slide-down 0.3s cubic-bezier(0.2, 0.8, 0.8, 1);
+}
+.media-button {
+  color:white;
+  border-radius: 10px;
+  padding: 5px;
+  
+}
+.media-button-play label {
+  font-size: 25px
+}
+
+
+.media-button label {
+  font-size: 20px;
+}
+
+
+#media-left-box{
+  min-width: 200px;
+}
+

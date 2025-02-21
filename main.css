@@ -12,6 +12,8 @@
 @import url("./styles/overview.css");
 @import url("./styles/bluetooth.css");
 @import url("./styles/power.css");
+@import url("./styles/player.css");
+@import url("./styles/buttons.css");
 
 
 * {
@@ -201,7 +203,6 @@ tooltip > * {
 
 #progress-background {
   background: alpha(white, 0.1);
-  border: 1px solid var(--foreground);
   border-radius: 4px;
   min-height: 8px;
 }
@@ -224,4 +225,17 @@ tooltip > * {
   min-width: 1px;
   background: alpha(white, 0.7);
   margin: 0 16px;
+}
+
+#active-window-box {
+  background-color: var(--shadow);
+  padding: 8px;
+  border-radius: 16px;
+  margin-top: 4px;
+}
+
+#hyprland-window-bar {
+  color: var(--primary);
+  font-size: 14pt;
+  padding: 0px 8px;
 }

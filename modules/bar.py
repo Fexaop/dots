@@ -4,14 +4,24 @@ from fabric.widgets.datetime import DateTime
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.button import Button
 from fabric.widgets.wayland import WaylandWindow as Window
-from fabric.hyprland.widgets import Workspaces, WorkspaceButton
-from fabric.utils.helpers import get_relative_path, exec_shell_command_async
+from fabric.hyprland.widgets import Workspaces, WorkspaceButton, ActiveWindow  # Added ActiveWindow
+from fabric.utils.helpers import get_relative_path, exec_shell_command_async, FormattedString, truncate  # Added FormattedString and truncate
 from gi.repository import GLib, Gdk, Gtk
 from modules.systemtray import SystemTray
 from config.config import open_config
 import modules.icons as icons
 import modules.data as data
 import subprocess
+import re
+from modules.window_title_widget import WINDOW_TITLE_MAP
+
+# New custom formatter for ActiveWindow
+class WindowFormatter:
+    def format(self, win_title, win_class):
+        for pattern, icon, display in WINDOW_TITLE_MAP:
+            if re.search(pattern, win_class, re.IGNORECASE):
+                return f"{icon}  {display}"  # Modified: 2 spaces between icon and text
+        return f"󰣆  {win_class.lower()}"  # Modified: 2 spaces between icon and text
 
 class Bar(Window):
     def __init__(self, **kwargs):
@@ -112,8 +122,10 @@ class Bar(Window):
         # Connect scroll-event to change brightness
         self.button_test_left.connect("scroll-event", self.on_test_left_scroll)
         # Add gesture controller to support touchpad smooth scrolling
-        self.gesture_left = Gtk.EventControllerScroll.new(self.button_test_left, Gtk.EventControllerScrollFlags.VERTICAL)
-        self.gesture_left.connect("scroll", self.on_test_left_gesture_scroll)
+        self.gesture_left = Gtk.EventControllerScroll.new(
+            self.button_test_left,
+            Gtk.EventControllerScrollFlags.VERTICAL | Gtk.EventControllerScrollFlags.KINETIC
+        )
 
         self.button_test_right = Button(
             name="button-test-right",
@@ -127,8 +139,22 @@ class Bar(Window):
         # Add scroll event mask for volume control.
         self.button_test_right.set_events(self.button_test_right.get_events() | Gdk.EventMask.SCROLL_MASK)
         self.button_test_right.connect("scroll-event", self.on_test_right_scroll)
-        self.gesture_right = Gtk.EventControllerScroll.new(self.button_test_right, Gtk.EventControllerScrollFlags.VERTICAL)
-        self.gesture_right.connect("scroll", self.on_test_right_gesture_scroll)
+        self.gesture_right = Gtk.EventControllerScroll.new(
+            self.button_test_right,
+            Gtk.EventControllerScrollFlags.VERTICAL | Gtk.EventControllerScrollFlags.KINETIC
+        )
+
+        # Create an ActiveWindow widget with updated formatter using WindowFormatter.
+        self.active_window = ActiveWindow(
+            name="hyprland-window-bar",
+            h_expand=True,
+            formatter=WindowFormatter()
+        )
+        # Wrap the active_window in a Box if desired.
+        active_window_box = Box(
+            name="active-window-box",
+            children=[self.active_window]
+        )
 
         self.left_container = Box(
             name="start-container",
@@ -137,6 +163,7 @@ class Bar(Window):
             children=[
                 self.button_apps,
                 Box(name="workspaces-container", children=[self.workspaces]),
+                active_window_box,  # Newly added box to display the current active window.
                 self.button_overview,
             ]
         )
@@ -167,6 +194,10 @@ class Bar(Window):
         self.children = self.main_bar
 
         self.hidden = False
+
+        # Add scroll timers
+        self.last_scroll_time_left = 0
+        self.last_scroll_time_right = 0
 
         self.show_all()
 
@@ -209,77 +240,35 @@ class Bar(Window):
             self.main_bar.remove_style_class("hidden")
 
     def on_test_left_scroll(self, widget, event):
-        if event.direction == Gdk.ScrollDirection.UP:
-            exec_shell_command_async("brightnessctl set +5%")
-            current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-            self.notch.open_notch("osd")
-            self.notch.osd.update_brightness(current_bri)
-        elif event.direction == Gdk.ScrollDirection.DOWN:
-            exec_shell_command_async("brightnessctl set 5%-")
-            current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-            self.notch.open_notch("osd")
-            self.notch.osd.update_brightness(current_bri)
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
-            success, dx, dy = event.get_scroll_deltas()  # Fix: Properly unpack all three values
+        current_time = GLib.get_monotonic_time()
+        # Add threshold of 100ms between scroll events
+        if current_time - self.last_scroll_time_left < 10000:  # 100000 microseconds = 100ms
+            return True
+        
+        self.last_scroll_time_left = current_time
+        
+        if event.direction in [Gdk.ScrollDirection.UP, Gdk.ScrollDirection.SMOOTH]:
+            success, dx, dy = event.get_scroll_deltas() if event.direction == Gdk.ScrollDirection.SMOOTH else (True, 0, -1)
             if dy < 0:
                 exec_shell_command_async("brightnessctl set +5%")
-                current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-                self.notch.open_notch("osd")
-                self.notch.osd.update_brightness(current_bri)
             elif dy > 0:
                 exec_shell_command_async("brightnessctl set 5%-")
-                current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-                self.notch.open_notch("osd")
-                self.notch.osd.update_brightness(current_bri)
+            
         return False
-
-    def on_test_left_gesture_scroll(self, controller, dx, dy):
-        if dy < 0:
-            exec_shell_command_async("brightnessctl set +5%")
-            current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-            self.notch.open_notch("osd")
-            self.notch.osd.update_brightness(current_bri)
-        elif dy > 0:
-            exec_shell_command_async("brightnessctl set 5%-")
-            current_bri = int(int(subprocess.check_output(["brightnessctl", "g"]).decode()) / int(subprocess.check_output(["brightnessctl", "m"]).decode()) * 100)
-            self.notch.open_notch("osd")
-            self.notch.osd.update_brightness(current_bri)
-        return True
 
     def on_test_right_scroll(self, widget, event):
-        if event.direction == Gdk.ScrollDirection.UP:
-            exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ +5%")
-            current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-            self.notch.open_notch("osd")
-            self.notch.osd.update_volume(current_vol)
-        elif event.direction == Gdk.ScrollDirection.DOWN:
-            exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ -5%")
-            current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-            self.notch.open_notch("osd")
-            self.notch.osd.update_volume(current_vol)
-        elif event.direction == Gdk.ScrollDirection.SMOOTH:
-            success, dx, dy = event.get_scroll_deltas()  # Fix: Properly unpack all three values
+        current_time = GLib.get_monotonic_time()
+        # Add threshold of 100ms between scroll events
+        if current_time - self.last_scroll_time_right < 10000:  # 100000 microseconds = 100ms
+            return True
+            
+        self.last_scroll_time_right = current_time
+        
+        if event.direction in [Gdk.ScrollDirection.UP, Gdk.ScrollDirection.SMOOTH]:
+            success, dx, dy = event.get_scroll_deltas() if event.direction == Gdk.ScrollDirection.SMOOTH else (True, 0, -1)
             if dy < 0:
                 exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ +5%")
-                current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-                self.notch.open_notch("osd")
-                self.notch.osd.update_volume(current_vol)
             elif dy > 0:
                 exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ -5%")
-                current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-                self.notch.open_notch("osd")
-                self.notch.osd.update_volume(current_vol)
+        
         return False
-
-    def on_test_right_gesture_scroll(self, controller, dx, dy):
-        if dy < 0:
-            exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ +5%")
-            current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-            self.notch.open_notch("osd")
-            self.notch.osd.update_volume(current_vol)
-        elif dy > 0:
-            exec_shell_command_async("pactl set-sink-volume @DEFAULT_SINK@ -5%")
-            current_vol = int(subprocess.check_output(["pactl", "get-sink-volume", "@DEFAULT_SINK@"]).decode().split("%")[0].split("/")[-1])
-            self.notch.open_notch("osd")
-            self.notch.osd.update_volume(current_vol)
-        return True

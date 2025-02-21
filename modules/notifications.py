@@ -40,7 +40,7 @@ class ActionButton(Button):
 
 
 class NotificationBox(Box):
-    def __init__(self, notification: Notification, timeout_ms=5000, **kwargs):
+    def __init__(self, notification: Notification, timeout_ms=3000, **kwargs):
         super().__init__(
             name="notification-box",
             # spacing=8,

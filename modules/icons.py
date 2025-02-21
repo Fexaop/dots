@@ -61,16 +61,18 @@ bluetooth_connected: str = "&#xecea;"
 bluetooth_disconnected: str = "&#xf081;"
 
 # Player
-pause: str = "&#xed45;"
-play: str = "&#xed46;"
-stop: str = "&#xed4a;"
-skip_back: str = "&#xed48;"
-skip_forward: str = "&#xed49;"
-prev: str = "&#xed4c;"
-next: str = "&#xed4b;"
+pause: str = "&#xf690;"
+play: str = "&#xf691;"
+stop: str = "&#xf695;"
+skip_back: str = "&#xf693;"
+skip_forward: str = "&#xf694;"
+prev: str = "&#xf697;"
+next: str = "&#xf696;"
 shuffle: str = "&#xf000;"
 repeat: str = "&#xeb72;"
 music: str = "&#xeafc;"
+rewind_backward_5: str = "&#xfabf;"
+rewind_forward_5: str = "&#xfac7;"
 
 # Volume
 vol_off: str = "&#xf1c3;"
@@ -87,12 +89,20 @@ copy_plus: str = "&#xfdae;"
 # Confirm
 accept: str = "&#xea5e;"
 cancel: str = "&#xeb55;"
+trash: str = "&#xeb41;"
 
 # Config
 config: str = "&#xeb20;"
 
-# Add this with the other icon definitions
-brightness = "<span font='Material Symbols Rounded 16'>brightness_6</span>"
+# Icons
+firefox: str = "&#xecfd;"
+chromium: str = "&#xec18;"
+spotify: str = "&#xfe86;"
+disc: str = "&#x1003e;"
+disc_off: str = "&#xf118;"
+
+# Misc
+dot: str = "&#xf698;"
 
 exceptions: list[str] = ['font_family', 'font_weight', 'span']
 

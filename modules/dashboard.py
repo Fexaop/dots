@@ -11,7 +11,7 @@ import modules.icons as icons
 from modules.dashboard_modules.buttons import Buttons
 from modules.dashboard_modules.widgets import Widgets
 from modules.pins import Pins
-from modules.calendar import Calendar
+from modules.wallpapers import WallpaperSelector
 from modules.kanban import Kanban
 
 class Dashboard(Box):
@@ -20,8 +20,8 @@ class Dashboard(Box):
             name="dashboard",
             orientation="v",
             spacing=8,
-            h_align="center",
-            v_align="start",
+            h_align="fill",
+            v_align="fill",
             h_expand=True,
             # v_expand=True,
             visible=True,
@@ -33,7 +33,7 @@ class Dashboard(Box):
         self.widgets = Widgets(notch=self.notch)
         self.pins = Pins()
         self.kanban = Kanban()
-        self.calendar = Calendar()
+        self.wallpapers = WallpaperSelector()
 
         self.stack = Stack(
             name="stack",
@@ -63,7 +63,7 @@ class Dashboard(Box):
 
         self.label_4 = Label(
             name="label-4",
-            label="Calendar",
+            label="Wallpapers",
         )
 
         self.terminal = Vte.Terminal()
@@ -85,13 +85,16 @@ class Dashboard(Box):
         self.stack.add_titled(self.widgets, "widgets", "Widgets")
         self.stack.add_titled(self.pins, "pins", "Pins")
         self.stack.add_titled(self.kanban, "kanban", "Kanban")
-        self.stack.add_titled(self.calendar, "calendar", "Calendar")
+        self.stack.add_titled(self.wallpapers, "wallpapers", "Wallpapers")
         self.stack.add_titled(self.terminal, "terminal", "Terminal")
 
         self.switcher.set_stack(self.stack)
         self.switcher.set_hexpand(True)
         self.switcher.set_homogeneous(True)
         self.switcher.set_can_focus(True)
+        
+        # Add signal to detect when the visible child changes
+        self.stack.connect("notify::visible-child", self.on_visible_child_changed)
 
         self.add(self.switcher)
         self.add(self.stack)
@@ -113,3 +116,8 @@ class Dashboard(Box):
     def get_current_index(self, children):
         current_child = self.stack.get_visible_child()
         return children.index(current_child) if current_child in children else -1
+
+    def on_visible_child_changed(self, stack, param):
+        if stack.get_visible_child() == self.wallpapers:
+            self.wallpapers.search_entry.set_text("")
+            self.wallpapers.search_entry.grab_focus()
